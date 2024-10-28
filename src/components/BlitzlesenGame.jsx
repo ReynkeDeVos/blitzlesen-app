@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Star, Timer, Award } from "lucide-react";
+import { Timer, Target, Check, X } from "lucide-react";
+import confetti from "canvas-confetti";
 
 const words = [
   "der",
@@ -29,10 +30,19 @@ const BlitzlesenGame = () => {
   const [gameState, setGameState] = useState("start"); // start, intro, playing, end
   const [targetWord, setTargetWord] = useState("");
   const [fallingWords, setFallingWords] = useState([]);
-  const [score, setScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState(45);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showError, setShowError] = useState(false);
+  const [missedWord, setMissedWord] = useState(false);
+  const [lastMissedWord, setLastMissedWord] = useState("");
+  const [shakingWordId, setShakingWordId] = useState(null);
+  const [explodingWordId, setExplodingWordId] = useState(null);
+
+  // Statistik-States
+  const [correctClicks, setCorrectClicks] = useState(0);
+  const [wrongClicks, setWrongClicks] = useState(0);
+  const [missedTargets, setMissedTargets] = useState(0);
+  const [targetWordAppearances, setTargetWordAppearances] = useState(0);
 
   const selectRandomWord = useCallback(() => {
     const word = words[Math.floor(Math.random() * words.length)];
@@ -40,54 +50,143 @@ const BlitzlesenGame = () => {
     return word;
   }, []);
 
+  // Konfetti-Animation für perfektes Spiel
+  const triggerConfetti = () => {
+    const duration = 3000;
+    const animationEnd = Date.now() + duration;
+    const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 };
+
+    function randomInRange(min, max) {
+      return Math.random() * (max - min) + min;
+    }
+
+    const interval = setInterval(function () {
+      const timeLeft = animationEnd - Date.now();
+
+      if (timeLeft <= 0) {
+        return clearInterval(interval);
+      }
+
+      const particleCount = 50 * (timeLeft / duration);
+      confetti({
+        ...defaults,
+        particleCount,
+        origin: { x: randomInRange(0.1, 0.9), y: Math.random() - 0.2 },
+      });
+    }, 250);
+  };
+
   const startGame = () => {
     setGameState("intro");
-    setScore(0);
+    setCorrectClicks(0);
+    setWrongClicks(0);
+    setMissedTargets(0);
+    setTargetWordAppearances(0);
     setTimeLeft(45);
     selectRandomWord();
 
-    // Nach der Intro-Animation zum eigentlichen Spiel wechseln
     setTimeout(() => {
       setGameState("playing");
-    }, 3000);
+    }, 2000);
   };
 
   const handleWordClick = (word, id) => {
     if (word === targetWord) {
-      setScore((prev) => prev + 1);
+      setCorrectClicks((prev) => prev + 1);
       setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 1000);
-      setFallingWords((prev) => prev.filter((w) => w.id !== id));
-      selectRandomWord();
+      setTimeout(() => setShowSuccess(false), 1500);
+
+      // Explosionseffekt
+      setExplodingWordId(id);
+      setTimeout(() => {
+        setFallingWords((prev) => prev.filter((w) => w.id !== id));
+        setExplodingWordId(null);
+      }, 500);
+
+      // Lokaler Konfetti-Effekt
+      const element = document.getElementById(`word-${id}`);
+      if (element) {
+        const rect = element.getBoundingClientRect();
+        confetti({
+          particleCount: 30,
+          spread: 100,
+          origin: {
+            x: rect.left / window.innerWidth,
+            y: rect.top / window.innerHeight,
+          },
+        });
+      }
     } else {
+      setWrongClicks((prev) => prev + 1);
       setShowError(true);
-      setTimeout(() => setShowError(false), 1000);
+      setTimeout(() => setShowError(false), 1500);
+
+      // Wackeleffekt
+      setShakingWordId(id);
+      setTimeout(() => setShakingWordId(null), 500);
     }
   };
 
+  const checkMissedWords = useCallback(() => {
+    fallingWords.forEach((word) => {
+      const element = document.getElementById(`word-${word.id}`);
+      if (element) {
+        const rect = element.getBoundingClientRect();
+        if (rect.top > window.innerHeight) {
+          if (word.word === targetWord) {
+            setMissedTargets((prev) => prev + 1);
+            setMissedWord(true);
+            setLastMissedWord(word.word);
+            setTimeout(() => setMissedWord(false), 1500);
+          }
+          setFallingWords((prev) => prev.filter((w) => w.id !== word.id));
+        }
+      }
+    });
+  }, [fallingWords, targetWord]);
+
+  // Wortgenerierung mit garantiertem Zielwort
+  // Wortgenerierung mit garantiertem Zielwort
   useEffect(() => {
     if (gameState !== "playing") return;
 
     const interval = setInterval(() => {
-      if (Math.random() < 0.3) {
-        const newWord = words[Math.floor(Math.random() * words.length)];
-        const newId = Date.now();
-        const screenWidth = window.innerWidth;
-        const xPosition = Math.random() * (screenWidth - 150); // Berücksichtigung der Wortbreite
+      // 30% Chance für das Zielwort ODER wenn weniger als 10 Sekunden übrig sind und es noch nicht erschienen ist
+      const shouldAddTargetWord = Math.random() < 0.3 || (timeLeft < 10 && targetWordAppearances === 0);
 
-        setFallingWords((prev) => [
-          ...prev,
-          {
-            id: newId,
-            word: newWord,
-            x: xPosition,
-          },
-        ]);
+      // Wenn nicht das Zielwort erscheinen soll, wähle ein zufälliges anderes Wort
+      let newWord;
+      if (shouldAddTargetWord) {
+        newWord = targetWord;
+        setTargetWordAppearances((prev) => prev + 1);
+      } else {
+        // Wähle ein zufälliges Wort aus der Liste, aber nicht das Zielwort
+        const availableWords = words.filter((word) => word !== targetWord);
+        newWord = availableWords[Math.floor(Math.random() * availableWords.length)];
       }
-    }, 2000);
+
+      const newId = Date.now();
+      const screenWidth = window.innerWidth;
+      const xPosition = Math.random() * (screenWidth - 150);
+
+      setFallingWords((prev) => [
+        ...prev,
+        {
+          id: newId,
+          word: newWord,
+          x: xPosition,
+        },
+      ]);
+    }, 1000);
 
     return () => clearInterval(interval);
-  }, [gameState]);
+  }, [gameState, targetWord, timeLeft, targetWordAppearances]);
+
+  useEffect(() => {
+    if (gameState !== "playing") return;
+    const checkInterval = setInterval(checkMissedWords, 100);
+    return () => clearInterval(checkInterval);
+  }, [gameState, checkMissedWords]);
 
   useEffect(() => {
     if (gameState !== "playing") return;
@@ -96,6 +195,9 @@ const BlitzlesenGame = () => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
           setGameState("end");
+          if (wrongClicks === 0 && missedTargets === 0) {
+            setTimeout(triggerConfetti, 500);
+          }
           return 0;
         }
         return prev - 1;
@@ -103,27 +205,31 @@ const BlitzlesenGame = () => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [gameState]);
+  }, [gameState, wrongClicks, missedTargets]);
+
+  const ResultCard = ({ icon: Icon, label, value, color }) => (
+    <div className={`bg-white p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 ${color}`}>
+      <Icon className="w-8 h-8" />
+      <div className="text-xl font-bold">{value}</div>
+      <div className="text-sm text-gray-600">{label}</div>
+    </div>
+  );
 
   return (
     <div className="relative h-screen w-full overflow-hidden bg-gradient-to-b from-sky-100 to-purple-100">
-      {/* Header - nur während des Spiels sichtbar */}
+      {/* Header */}
       {gameState === "playing" && (
         <motion.div
           initial={{ y: -100 }}
           animate={{ y: 0 }}
           className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center bg-white/80 backdrop-blur-sm shadow-lg z-10">
           <div className="flex items-center gap-4 text-2xl font-bold text-purple-700">
-            <Star className="w-8 h-8 text-yellow-500" />
+            <Target className="w-8 h-8 text-yellow-500" />
             Suche: {targetWord}
           </div>
           <div className="flex items-center gap-4 text-2xl font-bold text-purple-700">
             <Timer className="w-8 h-8 text-blue-500" />
             {timeLeft}s
-          </div>
-          <div className="flex items-center gap-4 text-2xl font-bold text-purple-700">
-            <Award className="w-8 h-8 text-green-500" />
-            {score}
           </div>
         </motion.div>
       )}
@@ -142,7 +248,7 @@ const BlitzlesenGame = () => {
               rotate: [0, 5, -5, 0],
             }}
             transition={{
-              duration: 2,
+              duration: 1.5,
               ease: "easeInOut",
             }}>
             {targetWord}
@@ -156,18 +262,56 @@ const BlitzlesenGame = () => {
           {fallingWords.map(({ id, word, x }) => (
             <motion.div
               key={id}
+              id={`word-${id}`}
               initial={{ y: -50, x }}
-              animate={{ y: window.innerHeight }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 8, ease: "linear" }}
+              animate={{
+                y: window.innerHeight + 100,
+                x: x,
+                scale: explodingWordId === id ? [1, 1.2, 0] : 1,
+                rotate: shakingWordId === id ? [-5, 5, -5, 5, 0] : 0,
+                backgroundColor: shakingWordId === id ? ["#ffffff", "#ff0000", "#ffffff"] : "#ffffff",
+              }}
+              exit={
+                explodingWordId === id
+                  ? {
+                      scale: 0,
+                      opacity: 0,
+                    }
+                  : { opacity: 0 }
+              }
+              transition={{
+                y: { duration: 8, ease: "linear" },
+                rotate: { duration: 0.5, ease: "easeInOut" },
+                backgroundColor: { duration: 0.5, ease: "easeInOut" },
+                scale: explodingWordId === id ? { duration: 0.5 } : { duration: 0.3 },
+              }}
               onClick={() => handleWordClick(word, id)}
-              className="falling-word absolute"
+              className="falling-word absolute bg-white hover:bg-yellow-50"
               style={{
-                background: `linear-gradient(135deg, ${word === targetWord ? "#f0fff4" : "#ffffff"} 0%, ${
-                  word === targetWord ? "#dcfce7" : "#f8fafc"
-                } 100%)`,
+                transformOrigin: "center center",
               }}>
               {word}
+              {explodingWordId === id && (
+                <motion.div
+                  className="absolute inset-0 flex items-center justify-center"
+                  initial={{ opacity: 1 }}
+                  animate={{ opacity: 0 }}
+                  transition={{ duration: 0.5 }}>
+                  {[...Array(8)].map((_, i) => (
+                    <motion.div
+                      key={i}
+                      className="absolute w-2 h-2 bg-yellow-400 rounded-full"
+                      initial={{ scale: 0 }}
+                      animate={{
+                        scale: [0, 1, 0],
+                        x: [0, Math.cos((i * Math.PI) / 4) * 50],
+                        y: [0, Math.sin((i * Math.PI) / 4) * 50],
+                      }}
+                      transition={{ duration: 0.5 }}
+                    />
+                  ))}
+                </motion.div>
+              )}
             </motion.div>
           ))}
         </AnimatePresence>
@@ -196,7 +340,19 @@ const BlitzlesenGame = () => {
                      bg-gradient-to-r from-orange-400 to-orange-500
                      text-white px-12 py-6 rounded-2xl text-4xl font-bold
                      shadow-lg">
-            Weiter so! 🌟
+            Wir suchen "{targetWord}" 🔍
+          </motion.div>
+        )}
+        {missedWord && (
+          <motion.div
+            initial={{ y: 50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -50, opacity: 0 }}
+            className="absolute bottom-20 left-1/2 transform -translate-x-1/2
+                     bg-gradient-to-r from-blue-400 to-blue-500
+                     text-white px-12 py-6 rounded-2xl text-4xl font-bold
+                     shadow-lg">
+            Oops! "{lastMissedWord}" ist durchgefallen! 👀
           </motion.div>
         )}
       </AnimatePresence>
@@ -207,7 +363,7 @@ const BlitzlesenGame = () => {
           <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="bg-white p-12 rounded-3xl text-center shadow-2xl max-w-2xl mx-4">
+            className="bg-white p-12 rounded-3xl text-center shadow-2xl max-w-3xl mx-4">
             <motion.h2
               className="text-4xl md:text-5xl font-bold mb-8 text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-pink-600"
               animate={{ scale: [1, 1.05, 1] }}
@@ -217,14 +373,19 @@ const BlitzlesenGame = () => {
 
             {gameState === "end" && (
               <div className="mb-8">
-                <p className="text-3xl mb-4">Deine Punkte:</p>
-                <motion.div
-                  className="text-6xl font-bold text-purple-600"
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ delay: 0.5, type: "spring" }}>
-                  {score}
-                </motion.div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                  <ResultCard icon={Check} label="Richtig gelesen" value={correctClicks} color="text-green-600" />
+                  <ResultCard icon={X} label="Falsch geklickt" value={wrongClicks} color="text-red-600" />
+                  <ResultCard icon={Target} label="Durchgefallen" value={missedTargets} color="text-blue-600" />
+                </div>
+                {wrongClicks === 0 && missedTargets === 0 && correctClicks > 0 && (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="text-2xl font-bold text-green-600 mb-4">
+                    🎉 Perfekt! Keine Fehler! 🎉
+                  </motion.div>
+                )}
               </div>
             )}
 

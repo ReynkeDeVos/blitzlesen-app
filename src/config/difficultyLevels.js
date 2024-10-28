@@ -1,0 +1,32 @@
+export const difficultyLevels = {
+  easy: {
+    name: "Leicht",
+    emoji: "🌱",
+    MAX_WORDS: 1,
+    INITIAL_WORDS: 1,
+    WORD_FALL_DURATION: 16,
+    WORD_SPAWN_INTERVAL: 1250000,
+    TARGET_WORD_CHANCE: 0.3,
+    description: "Perfekt zum Üben",
+  },
+  normal: {
+    name: "Normal",
+    emoji: "🌟",
+    MAX_WORDS: 8,
+    INITIAL_WORDS: 3,
+    WORD_FALL_DURATION: 10,
+    WORD_SPAWN_INTERVAL: 2500,
+    TARGET_WORD_CHANCE: 0.25,
+    description: "Für geübte Leser",
+  },
+  hard: {
+    name: "Schwer",
+    emoji: "🚀",
+    MAX_WORDS: 15,
+    INITIAL_WORDS: 4,
+    WORD_FALL_DURATION: 8,
+    WORD_SPAWN_INTERVAL: 1500,
+    TARGET_WORD_CHANCE: 0.2,
+    description: "Für Blitzlese-Profis",
+  },
+};

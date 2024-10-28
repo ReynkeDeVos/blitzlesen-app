@@ -416,7 +416,7 @@ const BlitzlesenGame = () => {
             bg-gradient-to-r from-blue-400 to-blue-500
             text-white px-12 py-6 rounded-2xl text-4xl font-bold
             shadow-lg">
-            Oops! "{lastMissedWord}" ist durchgefallen! 👀
+            Oops! 👀
           </motion.div>
         )}
       </AnimatePresence>

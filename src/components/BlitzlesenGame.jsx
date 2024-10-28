@@ -279,7 +279,7 @@ const BlitzlesenGame = () => {
           className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center bg-white/80 backdrop-blur-sm shadow-lg z-10">
           <div className="flex items-center gap-4 text-2xl font-bold text-purple-700">
             <Target className="w-8 h-8 text-yellow-500" />
-            Suche: {targetWord}
+            {targetWord}
           </div>
           <div className="flex items-center gap-4 text-2xl font-bold text-purple-700">
             <Timer className="w-8 h-8 text-blue-500" />
@@ -301,7 +301,7 @@ const BlitzlesenGame = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}>
-              🔍 Suche:
+              🔍{" "}
             </motion.div>
             <motion.div
               className="text-6xl md:text-8xl font-bold text-purple-600"
@@ -404,7 +404,7 @@ const BlitzlesenGame = () => {
             bg-gradient-to-r from-orange-400 to-orange-500
             text-white px-12 py-6 rounded-2xl text-4xl font-bold
             shadow-lg">
-            Wir suchen "{targetWord}" 🔍
+            Suche "{targetWord}" 🔍
           </motion.div>
         )}
         {missedWord && (

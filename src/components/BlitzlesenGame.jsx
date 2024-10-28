@@ -162,79 +162,70 @@ const BlitzlesenGame = () => {
     });
   }, [fallingWords, targetWord]);
 
-  // Wortgenerierung mit Kollisionsvermeidung
+  // Wortgenerierung
   useEffect(() => {
-    if (gameState !== "playing") return;
+    if (gameState !== "playing") {
+      setFallingWords([]);
+      return;
+    }
 
-    const MIN_WORD_DISTANCE = 150; // Mindestabstand zwischen Wörtern  //von 100 auf 150 erhöht
-
-    const getWordPositions = () => {
-      return fallingWords.map((word) => ({
-        x: word.x,
-        y: document.getElementById(`word-${word.id}`)?.getBoundingClientRect()?.top || 0,
-      }));
-    };
-
-    const isPositionFree = (newX) => {
-      const existingPositions = getWordPositions();
-      return existingPositions.every((pos) => Math.abs(pos.x - newX) >= MIN_WORD_DISTANCE);
-    };
-
-    const spawnWord = () => {
-      // Nur spawnen wenn weniger als 3 Wörter auf dem Bildschirm sind
-      if (fallingWords.length >= 3) return;
-
-      const shouldAddTargetWord = Math.random() < 0.25 || (timeLeft < 10 && targetWordAppearances === 0);
-
-      let newWord;
-      if (shouldAddTargetWord) {
-        newWord = targetWord;
-        setTargetWordAppearances((prev) => prev + 1);
-      } else {
-        const availableWords = words.filter((word) => word !== targetWord);
-        newWord = availableWords[Math.floor(Math.random() * availableWords.length)];
-      }
-
+    const generateWord = () => {
       const screenWidth = window.innerWidth;
-      const margin = 100;
-      let xPosition;
-      let attempts = 0;
-      const maxAttempts = 10;
+      const margin = 150;
+      const availableWidth = screenWidth - 2 * margin;
 
-      // Versuche eine freie Position zu finden
-      do {
-        xPosition = margin + Math.random() * (screenWidth - 2 * margin);
-        attempts++;
-      } while (!isPositionFree(xPosition) && attempts < maxAttempts);
+      // 20% Chance für das Zielwort
+      const shouldBeTargetWord = Math.random() < 0.2;
+      const word = shouldBeTargetWord ? targetWord : words[Math.floor(Math.random() * words.length)];
 
-      // Nur spawnen wenn eine freie Position gefunden wurde
-      if (attempts < maxAttempts) {
-        setFallingWords((prev) => [
-          ...prev,
-          {
-            id: Date.now() + Math.random(),
-            word: newWord,
-            x: xPosition,
-          },
-        ]);
+      if (shouldBeTargetWord) {
+        setTargetWordAppearances((prev) => prev + 1);
       }
+
+      const xPosition = margin + Math.random() * availableWidth;
+
+      return {
+        id: Date.now() + Math.random(),
+        word,
+        x: xPosition,
+      };
     };
 
-    // Initial erst nach 2 Sekunden spawnen
-    setTimeout(() => spawnWord(), 2000);
+    // Initialer Batch von Wörtern
+    const generateInitialWords = () => {
+      const newWords = Array(3)
+        .fill(null)
+        .map(() => generateWord());
+      setFallingWords((prev) => [...prev, ...newWords]);
+    };
 
-    // Regelmäßig neue Wörter spawnen
-    const mainInterval = setInterval(() => {
-      // Maximale Anzahl gleichzeitiger Wörter begrenzen
-      if (fallingWords.length < 5) {
-        spawnWord();
-      }
-    }, 2500); // Längeres Interval zwischen Wörtern
+    // Einzelnes neues Wort
+    const addNewWord = () => {
+      setFallingWords((prev) => [...prev, generateWord()]);
+    };
+
+    // Start nach kurzer Verzögerung
+    const startTimeout = setTimeout(() => {
+      generateInitialWords();
+    }, 1000);
+
+    // Regelmäßig neue Wörter hinzufügen
+    const wordInterval = setInterval(() => {
+      addNewWord();
+    }, 2000);
 
     return () => {
-      clearInterval(mainInterval);
+      clearTimeout(startTimeout);
+      clearInterval(wordInterval);
     };
-  }, [gameState, targetWord, timeLeft, targetWordAppearances, fallingWords]);
+  }, [gameState, targetWord]);
+
+  // Separate useEffect für das Aufräumen der fallingWords
+  useEffect(() => {
+    if (gameState !== "playing") {
+      setFallingWords([]); // Clear words when game is not playing
+    }
+  }, [gameState]);
 
   useEffect(() => {
     if (gameState !== "playing") return;
@@ -295,28 +286,37 @@ const BlitzlesenGame = () => {
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.5, opacity: 0, x: -100 }}
           className="absolute inset-0 flex items-center justify-center">
-          <motion.div className="flex flex-col items-center gap-6 bg-white/90 px-12 py-8 rounded-3xl shadow-2xl">
+          <div className="flex flex-col items-center gap-8">
+            {/* Große Lupe */}
             <motion.div
-              className="text-3xl md:text-4xl text-purple-600 font-bold"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}>
-              🔍{" "}
-            </motion.div>
-            <motion.div
-              className="text-6xl md:text-8xl font-bold text-purple-600"
+              className="text-8xl"
               animate={{
-                scale: [1, 1.2, 1],
-                rotate: [0, 5, -5, 0],
+                rotate: [-10, 10, -10],
+                scale: [1, 1.1, 1],
+              }}
+              transition={{
+                duration: 2,
+                repeat: Infinity,
+                ease: "easeInOut",
+              }}>
+              🔍
+            </motion.div>
+
+            {/* Box mit Wort */}
+            <motion.div
+              className="bg-white/90 px-12 py-8 rounded-3xl shadow-2xl"
+              animate={{
+                rotate: [-2, 2, -2],
+                scale: [1, 1.05, 1],
               }}
               transition={{
                 duration: 2,
                 ease: "easeInOut",
-                repeat: 1, // Eine Wiederholung der Animation
+                repeat: 1,
               }}>
-              {targetWord}
+              <motion.div className="text-6xl md:text-8xl font-bold text-purple-600">{targetWord}</motion.div>
             </motion.div>
-          </motion.div>
+          </div>
         </motion.div>
       )}
 
@@ -344,13 +344,13 @@ const BlitzlesenGame = () => {
                   : { opacity: 0 }
               }
               transition={{
-                y: { duration: 10, ease: "linear" }, // von 6 auf 10 Sekunden erhöht
+                y: { duration: 10, ease: "linear" },
                 rotate: { duration: 0.5, ease: "easeInOut" },
                 backgroundColor: { duration: 0.5, ease: "easeInOut" },
                 scale: explodingWordId === id ? { duration: 0.5 } : { duration: 0.3 },
               }}
               onClick={() => handleWordClick(word, id)}
-              className="falling-word absolute bg-white hover:bg-yellow-50"
+              className="falling-word absolute bg-white hover:bg-yellow-50 px-6 py-3 text-2xl font-bold rounded-xl shadow-lg cursor-pointer"
               style={{
                 transformOrigin: "center center",
               }}>
@@ -389,9 +389,9 @@ const BlitzlesenGame = () => {
             animate={{ scale: 1, rotate: 0 }}
             exit={{ scale: 0, rotate: 20 }}
             className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
-                     bg-gradient-to-r from-green-400 to-green-500 
-                     text-white px-12 py-6 rounded-2xl text-4xl font-bold
-                     shadow-lg">
+                       bg-gradient-to-r from-green-400 to-green-500 
+                       text-white px-12 py-6 rounded-2xl text-4xl font-bold
+                       shadow-lg">
             Super! 🎉
           </motion.div>
         )}
@@ -401,9 +401,9 @@ const BlitzlesenGame = () => {
             animate={{ scale: 1 }}
             exit={{ scale: 0 }}
             className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
-            bg-gradient-to-r from-orange-400 to-orange-500
-            text-white px-12 py-6 rounded-2xl text-4xl font-bold
-            shadow-lg">
+                       bg-gradient-to-r from-orange-400 to-orange-500
+                       text-white px-12 py-6 rounded-2xl text-4xl font-bold
+                       shadow-lg">
             Suche "{targetWord}" 🔍
           </motion.div>
         )}
@@ -413,9 +413,9 @@ const BlitzlesenGame = () => {
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: -50, opacity: 0 }}
             className="absolute bottom-20 left-1/2 transform -translate-x-1/2
-            bg-gradient-to-r from-blue-400 to-blue-500
-            text-white px-12 py-6 rounded-2xl text-4xl font-bold
-            shadow-lg">
+                       bg-gradient-to-r from-blue-400 to-blue-500
+                       text-white px-12 py-6 rounded-2xl text-4xl font-bold
+                       shadow-lg">
             Oops! 👀
           </motion.div>
         )}

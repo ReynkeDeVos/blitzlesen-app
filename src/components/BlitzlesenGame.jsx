@@ -4,39 +4,19 @@ import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Timer, Target, Check, X } from "lucide-react";
 import confetti from "canvas-confetti";
-
-const words = [
-  "der",
-  "die",
-  "das",
-  "und",
-  "ist",
-  "von",
-  "mit",
-  "auf",
-  "für",
-  "aus",
-  "bei",
-  "bis",
-  "hat",
-  "war",
-  "zur",
-  "wie",
-  "dem",
-  "nur",
-  "vor",
-  "zum",
-];
+import { gameConfig } from "../config/gameConfig";
+import { difficultyLevels } from "../config/difficultyLevels";
+import DifficultySelector from "./DifficultySelector";
 
 const BlitzlesenGame = () => {
-  const [gameState, setGameState] = useState("start"); // start, intro, playing, end
+  const [gameState, setGameState] = useState("difficulty"); // difficulty, start, intro, playing, end
+  const [difficulty, setDifficulty] = useState(null);
   const [targetWord, setTargetWord] = useState("");
   const [fallingWords, setFallingWords] = useState([]);
-  const [timeLeft, setTimeLeft] = useState(45);
+  const [timeLeft, setTimeLeft] = useState(gameConfig.GAME_DURATION);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showError, setShowError] = useState(false);
   const [missedWord, setMissedWord] = useState(false);
-  const [lastMissedWord, setLastMissedWord] = useState("");
   const [shakingWordId, setShakingWordId] = useState(null);
   const [explodingWordId, setExplodingWordId] = useState(null);
 
@@ -44,13 +24,25 @@ const BlitzlesenGame = () => {
   const [correctClicks, setCorrectClicks] = useState(0);
   const [wrongClicks, setWrongClicks] = useState(0);
   const [missedTargets, setMissedTargets] = useState(0);
-  const [targetWordAppearances, setTargetWordAppearances] = useState(0);
+
+  // Berechnung der verfügbaren Sections basierend auf Bildschirmbreite
+  const calculateSections = useCallback(() => {
+    const screenWidth = window.innerWidth;
+    const availableWidth = screenWidth - 2 * gameConfig.MARGIN;
+    const possibleSections = Math.floor(availableWidth / gameConfig.SECTION_MIN_WIDTH);
+    return Math.max(3, possibleSections); // Mindestens 3 Sections
+  }, []);
 
   const selectRandomWord = useCallback(() => {
-    const word = words[Math.floor(Math.random() * words.length)];
+    const word = gameConfig.words[Math.floor(Math.random() * gameConfig.words.length)];
     setTargetWord(word);
     return word;
   }, []);
+
+  const handleDifficultySelect = (selectedDifficulty) => {
+    setDifficulty(selectedDifficulty);
+    setGameState("start");
+  };
 
   // Konfetti-Animation für perfektes Spiel
   const triggerConfetti = () => {
@@ -79,31 +71,32 @@ const BlitzlesenGame = () => {
   };
 
   const startGame = () => {
+    if (!difficulty) return;
+
     setGameState("intro");
     setCorrectClicks(0);
     setWrongClicks(0);
     setMissedTargets(0);
-    setTargetWordAppearances(0);
-    setTimeLeft(45);
+    setTimeLeft(gameConfig.GAME_DURATION);
     selectRandomWord();
 
     setTimeout(() => {
       setGameState("playing");
-    }, 4000);
+    }, gameConfig.INTRO_DURATION);
   };
 
   const handleWordClick = (word, id) => {
     if (word === targetWord) {
       setCorrectClicks((prev) => prev + 1);
       setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 1500);
+      setTimeout(() => setShowSuccess(false), gameConfig.FEEDBACK_DURATION);
 
       // Explosionseffekt
       setExplodingWordId(id);
       setTimeout(() => {
         setFallingWords((prev) => prev.filter((w) => w.id !== id));
         setExplodingWordId(null);
-      }, 500);
+      }, gameConfig.EXPLOSION_DURATION);
 
       // Lokaler Konfetti-Effekt
       const element = document.getElementById(`word-${id}`);
@@ -121,11 +114,11 @@ const BlitzlesenGame = () => {
     } else {
       setWrongClicks((prev) => prev + 1);
       setShowError(true);
-      setTimeout(() => setShowError(false), 1500);
+      setTimeout(() => setShowError(false), gameConfig.FEEDBACK_DURATION);
 
       // Wackeleffekt
       setShakingWordId(id);
-      setTimeout(() => setShakingWordId(null), 500);
+      setTimeout(() => setShakingWordId(null), gameConfig.SHAKE_DURATION);
     }
   };
 
@@ -138,7 +131,6 @@ const BlitzlesenGame = () => {
           if (word.word === targetWord) {
             setMissedTargets((prev) => prev + 1);
             setMissedWord(true);
-            setLastMissedWord(word.word);
 
             // Explosionseffekt für verpasstes Zielwort
             const missedWordRect = element.getBoundingClientRect();
@@ -149,12 +141,12 @@ const BlitzlesenGame = () => {
                 x: missedWordRect.left / window.innerWidth,
                 y: missedWordRect.top / window.innerHeight,
               },
-              colors: ["#ff0000", "#ff4444", "#ff8888"], // rötliche Farben
+              colors: ["#ff0000", "#ff4444", "#ff8888"],
               startVelocity: 20,
               gravity: 0.5,
             });
 
-            setTimeout(() => setMissedWord(false), 1500);
+            setTimeout(() => setMissedWord(false), gameConfig.FEEDBACK_DURATION);
           }
           setFallingWords((prev) => prev.filter((w) => w.id !== word.id));
         }
@@ -162,77 +154,108 @@ const BlitzlesenGame = () => {
     });
   }, [fallingWords, targetWord]);
 
-  // Wortgenerierung
+  // Wortgenerierung mit dynamischer Section-Berechnung
   useEffect(() => {
-    if (gameState !== "playing") {
-      setFallingWords([]);
-      return;
-    }
+    if (gameState !== "playing" || !difficulty) return;
 
+    const currentConfig = difficultyLevels[difficulty];
     const generateWord = () => {
       const screenWidth = window.innerWidth;
-      const margin = 150;
-      const availableWidth = screenWidth - 2 * margin;
+      const availableSections = calculateSections();
+      const sectionWidth = (screenWidth - 2 * gameConfig.MARGIN) / availableSections;
 
-      // 20% Chance für das Zielwort
-      const shouldBeTargetWord = Math.random() < 0.2;
-      const word = shouldBeTargetWord ? targetWord : words[Math.floor(Math.random() * words.length)];
+      const section = Math.floor(Math.random() * availableSections);
+      const xPosition = Math.max(
+        gameConfig.MARGIN,
+        Math.min(
+          gameConfig.MARGIN + section * sectionWidth + Math.random() * (sectionWidth * 0.6),
+          screenWidth - gameConfig.MIN_WORD_WIDTH - gameConfig.MARGIN
+        )
+      );
 
-      if (shouldBeTargetWord) {
-        setTargetWordAppearances((prev) => prev + 1);
-      }
-
-      const xPosition = margin + Math.random() * availableWidth;
+      const shouldBeTargetWord = Math.random() < currentConfig.TARGET_WORD_CHANCE;
+      const word = shouldBeTargetWord
+        ? targetWord
+        : gameConfig.words[Math.floor(Math.random() * gameConfig.words.length)];
 
       return {
         id: Date.now() + Math.random(),
         word,
         x: xPosition,
+        section,
       };
     };
 
-    // Initialer Batch von Wörtern
     const generateInitialWords = () => {
-      const newWords = Array(3)
+      const newWords = Array(currentConfig.INITIAL_WORDS)
         .fill(null)
         .map(() => generateWord());
       setFallingWords((prev) => [...prev, ...newWords]);
     };
 
-    // Einzelnes neues Wort
     const addNewWord = () => {
-      setFallingWords((prev) => [...prev, generateWord()]);
+      if (fallingWords.length >= currentConfig.MAX_WORDS) return;
+
+      const occupiedSections = fallingWords.map((word) => word.section);
+
+      let newWord;
+      let attempts = 0;
+      do {
+        newWord = generateWord();
+        attempts++;
+      } while (occupiedSections.includes(newWord.section) && attempts < 15);
+
+      if (attempts < 15) {
+        setFallingWords((prev) => [...prev, newWord]);
+      }
     };
 
-    // Start nach kurzer Verzögerung
     const startTimeout = setTimeout(() => {
       generateInitialWords();
-    }, 1000);
+    }, 500);
 
-    // Regelmäßig neue Wörter hinzufügen
     const wordInterval = setInterval(() => {
       addNewWord();
-    }, 2000);
+    }, currentConfig.WORD_SPAWN_INTERVAL);
 
     return () => {
       clearTimeout(startTimeout);
       clearInterval(wordInterval);
     };
-  }, [gameState, targetWord]);
+  }, [gameState, targetWord, fallingWords, difficulty, calculateSections]);
 
-  // Separate useEffect für das Aufräumen der fallingWords
+  // Bildschirmgrößenänderung
   useEffect(() => {
-    if (gameState !== "playing") {
-      setFallingWords([]); // Clear words when game is not playing
-    }
-  }, [gameState]);
+    const handleResize = () => {
+      const availableSections = calculateSections();
+      const screenWidth = window.innerWidth;
+      const sectionWidth = (screenWidth - 2 * gameConfig.MARGIN) / availableSections;
 
+      setFallingWords((prev) =>
+        prev.map((word) => {
+          const section = Math.floor(Math.random() * availableSections);
+          const xPosition = gameConfig.MARGIN + section * sectionWidth + Math.random() * (sectionWidth * 0.6);
+          return {
+            ...word,
+            x: xPosition,
+            section,
+          };
+        })
+      );
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [calculateSections]);
+
+  // Überprüfung verpasster Wörter
   useEffect(() => {
     if (gameState !== "playing") return;
     const checkInterval = setInterval(checkMissedWords, 100);
     return () => clearInterval(checkInterval);
   }, [gameState, checkMissedWords]);
 
+  // Spielzeit
   useEffect(() => {
     if (gameState !== "playing") return;
 
@@ -260,6 +283,15 @@ const BlitzlesenGame = () => {
     </div>
   );
 
+  // Wenn keine Schwierigkeit ausgewählt ist, zeige den Schwierigkeitsauswahl-Screen
+  if (gameState === "difficulty") {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-sky-100 to-purple-100 flex items-center justify-center p-4">
+        <DifficultySelector onSelect={handleDifficultySelect} />
+      </div>
+    );
+  }
+
   return (
     <div className="relative h-screen w-full overflow-hidden bg-gradient-to-b from-sky-100 to-purple-100">
       {/* Header */}
@@ -271,6 +303,9 @@ const BlitzlesenGame = () => {
           <div className="flex items-center gap-4 text-2xl font-bold text-purple-700">
             <Target className="w-8 h-8 text-yellow-500" />
             {targetWord}
+          </div>
+          <div className="text-xl font-bold text-purple-700">
+            {difficultyLevels[difficulty].emoji} {difficultyLevels[difficulty].name}
           </div>
           <div className="flex items-center gap-4 text-2xl font-bold text-purple-700">
             <Timer className="w-8 h-8 text-blue-500" />
@@ -287,7 +322,6 @@ const BlitzlesenGame = () => {
           exit={{ scale: 0.5, opacity: 0, x: -100 }}
           className="absolute inset-0 flex items-center justify-center">
           <div className="flex flex-col items-center gap-8">
-            {/* Große Lupe */}
             <motion.div
               className="text-8xl"
               animate={{
@@ -302,7 +336,6 @@ const BlitzlesenGame = () => {
               🔍
             </motion.div>
 
-            {/* Box mit Wort */}
             <motion.div
               className="bg-white/90 px-12 py-8 rounded-3xl shadow-2xl"
               animate={{
@@ -344,15 +377,16 @@ const BlitzlesenGame = () => {
                   : { opacity: 0 }
               }
               transition={{
-                y: { duration: 10, ease: "linear" },
-                rotate: { duration: 0.5, ease: "easeInOut" },
-                backgroundColor: { duration: 0.5, ease: "easeInOut" },
-                scale: explodingWordId === id ? { duration: 0.5 } : { duration: 0.3 },
+                y: { duration: difficulty ? difficultyLevels[difficulty].WORD_FALL_DURATION : 10, ease: "linear" },
+                rotate: { duration: gameConfig.SHAKE_DURATION / 1000, ease: "easeInOut" },
+                backgroundColor: { duration: gameConfig.SHAKE_DURATION / 1000, ease: "easeInOut" },
+                scale: explodingWordId === id ? { duration: gameConfig.EXPLOSION_DURATION / 1000 } : { duration: 0.3 },
               }}
               onClick={() => handleWordClick(word, id)}
-              className="falling-word absolute bg-white hover:bg-yellow-50 px-6 py-3 text-2xl font-bold rounded-xl shadow-lg cursor-pointer"
+              className="falling-word absolute bg-white hover:bg-yellow-50 px-2 sm:px-4 py-1 sm:py-2 text-lg sm:text-2xl font-bold rounded-lg sm:rounded-xl shadow-lg cursor-pointer whitespace-nowrap"
               style={{
                 transformOrigin: "center center",
+                maxWidth: `${gameConfig.SECTION_MIN_WIDTH - 20}px`,
               }}>
               {word}
               {explodingWordId === id && (
@@ -389,9 +423,9 @@ const BlitzlesenGame = () => {
             animate={{ scale: 1, rotate: 0 }}
             exit={{ scale: 0, rotate: 20 }}
             className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
-                       bg-gradient-to-r from-green-400 to-green-500 
-                       text-white px-12 py-6 rounded-2xl text-4xl font-bold
-                       shadow-lg">
+                     bg-gradient-to-r from-green-400 to-green-500 
+                     text-white px-12 py-6 rounded-2xl text-4xl font-bold
+                     shadow-lg">
             Super! 🎉
           </motion.div>
         )}
@@ -401,9 +435,9 @@ const BlitzlesenGame = () => {
             animate={{ scale: 1 }}
             exit={{ scale: 0 }}
             className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
-                       bg-gradient-to-r from-orange-400 to-orange-500
-                       text-white px-12 py-6 rounded-2xl text-4xl font-bold
-                       shadow-lg">
+                     bg-gradient-to-r from-orange-400 to-orange-500
+                     text-white px-12 py-6 rounded-2xl text-4xl font-bold
+                     shadow-lg">
             Suche "{targetWord}" 🔍
           </motion.div>
         )}
@@ -413,9 +447,9 @@ const BlitzlesenGame = () => {
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: -50, opacity: 0 }}
             className="absolute bottom-20 left-1/2 transform -translate-x-1/2
-                       bg-gradient-to-r from-blue-400 to-blue-500
-                       text-white px-12 py-6 rounded-2xl text-4xl font-bold
-                       shadow-lg">
+                     bg-gradient-to-r from-blue-400 to-blue-500
+                     text-white px-12 py-6 rounded-2xl text-4xl font-bold
+                     shadow-lg">
             Oops! 👀
           </motion.div>
         )}
@@ -453,13 +487,23 @@ const BlitzlesenGame = () => {
               </div>
             )}
 
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={startGame}
-              className="game-button">
-              {gameState === "end" ? "Nochmal spielen" : "Spiel starten"}
-            </motion.button>
+            <div className="flex flex-col gap-4">
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={startGame}
+                className="game-button">
+                {gameState === "end" ? "Nochmal spielen" : "Spiel starten"}
+              </motion.button>
+
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setGameState("difficulty")}
+                className="text-purple-600 font-bold text-lg hover:text-purple-700">
+                Schwierigkeit ändern
+              </motion.button>
+            </div>
           </motion.div>
         </div>
       )}
